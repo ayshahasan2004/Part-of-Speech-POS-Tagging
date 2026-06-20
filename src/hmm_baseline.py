@@ -20,6 +20,9 @@ Unknown word handling:
       as <UNK> when building emission counts. This lets the model learn
       a realistic emission distribution for <UNK>, which is reused for
       any genuinely unseen word encountered at dev/test time.
+    - At inference time, if a word is not found in the vocabulary, the
+      model tries its lowercase form before falling back to <UNK>. This
+      handles sentence-initial capitalization (e.g. "Was" -> "was").
 
 Log-space probabilities:
     - Multiplying many raw probabilities together (one per token in a
@@ -114,9 +117,21 @@ class HMMTagger:
                (prev_total + self.k_transition * self.num_tags)
 
     def emission_prob(self, tag, word):
-        """B(word | tag): add-k smoothed emission probability.
-        Unseen words are mapped to <UNK> automatically."""
-        observed_word = word if word in self.vocab else UNK_TOKEN
+        """
+        B(word | tag): add-k smoothed emission probability.
+
+        Lookup order for unseen / rare words:
+            1. original word form  (e.g. "Was")
+            2. lowercase form      (e.g. "was")  -- handles sentence-initial caps
+            3. <UNK> token         -- genuine unknown word
+        """
+        if word in self.vocab:
+            observed_word = word
+        elif word.lower() in self.vocab:
+            observed_word = word.lower()
+        else:
+            observed_word = UNK_TOKEN
+
         tag_total = self.tag_counts[tag]
         return (self.emission_counts[tag][observed_word] + self.k_emission) / \
                (tag_total + self.k_emission * self.vocab_size)
@@ -220,6 +235,7 @@ if __name__ == "__main__":
     print(f"  B('the'  | DET-DT)   = {hmm.emission_prob('DET-DT', 'the'):.6f}")
     print(f"  B('dog'  | NOUN-NN)  = {hmm.emission_prob('NOUN-NN', 'dog'):.6f}")
     print(f"  B('xyzabc' | NOUN-NN) = {hmm.emission_prob('NOUN-NN', 'xyzabc'):.6f}  (unseen word -> <UNK>)")
+    print(f"  B('Was'  | VERB-VBD) = {hmm.emission_prob('VERB-VBD', 'Was'):.6f}  (capitalized -> tries lowercase)")
 
     print("\n" + "=" * 60)
     print("APPLYING THE HMM TO A REAL SENTENCE (raw probabilities)")
