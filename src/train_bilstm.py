@@ -65,3 +65,38 @@ def train_model(model, train_loader, dev_loader, epochs, lr, device):
 
 if __name__ == "__main__":
     print("--- starting training loop verification test ---")
+    # setup small mock parameters
+    vocab_size = 100
+    tagset_size = 10  # number of possible POS tags
+    word2idx = {"<PAD>": 0, "<UNK>": 1, "the": 2, "stock": 3, "fell": 4, "prices": 5, "rose": 6} #map each word to a unique index
+    tag2idx = {"<PAD>": 0, "DET-DT": 1, "NOUN-NN": 2, "VERB-VBD": 3, "NOUN-NNS": 4}# map each POS tag to a unique index
+    
+    # create small mock training dataset used to test model quickly
+    mock_train_data = [
+        (["the", "stock", "fell"], ["DET-DT", "NOUN-NN", "VERB-VBD"]),
+        (["prices", "rose"], ["NOUN-NNS", "VERB-VBD"])
+    ]
+    # create small mock validation dataset used to evaluate model
+    mock_dev_data = [
+        (["the", "prices", "fell"], ["DET-DT", "NOUN-NNS", "VERB-VBD"])
+    ]
+    # convert raw text data into PyTorch dataset format
+    train_dataset = POSDataset(mock_train_data, word2idx, tag2idx)
+    dev_dataset = POSDataset(mock_dev_data, word2idx, tag2idx)
+    
+    # generate data loaders used to load data in batches during training
+    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, collate_fn=collate_fn) # shuffle training data for better learning
+    dev_loader = DataLoader(dev_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)# no shuffling in validation
+    print("mock dataLoaders generated successfully")
+    
+    # initialize Model and assign to device (CPU or GPU)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # create BiLSTM model for POS tagging and move it to selected device
+    model = BiLSTMTagger(vocab_size, tagset_size, embedding_dim=16, hidden_dim=32).to(device)
+    print("BiLSTMTagger model instantiated and moved to device")
+    
+    #run verification training for 3 sample epochs
+    print("running short verification training pass...")
+    train_model(model, train_loader, dev_loader, epochs=3, lr=0.01, device=device)
+    
+    print("\nTraining loop and validation tracking work perfectly")
