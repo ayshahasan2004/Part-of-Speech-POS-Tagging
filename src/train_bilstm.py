@@ -62,3 +62,6 @@ def train_model(model, train_loader, dev_loader, epochs, lr, device):
         val_accuracy = (correct_tokens / total_tokens) * 100 if total_tokens > 0 else 0    #calculate validation accuracy as a percentage
         
         print(f"Epoch [{epoch+1}/{epochs}] -> Train Loss: {avg_train_loss:.4f} | Val Accuracy: {val_accuracy:.2f}%") #training loss and validation accuracy for the current epoch
+
+if __name__ == "__main__":
+    print("--- starting training loop verification test ---")

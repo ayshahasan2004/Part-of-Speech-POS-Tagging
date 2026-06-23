@@ -1,47 +1,24 @@
-"""
-hmm_baseline.py
-
-Implements an HMM POS tagger trained from scratch on the CoNLL-format
-Penn Treebank data. Computes:
-    - Initial probabilities  (pi):  P(tag is the first tag of a sentence)
-    - Transition probabilities (A): P(tag_i | tag_{i-1})
-    - Emission probabilities   (B): P(word | tag)
-
-Smoothing:
-    - Initial probabilities use Laplace (add-1) smoothing over the small
-      tag set (46 tags), so add-1 is cheap and safe here.
-    - Transition and emission probabilities use add-k smoothing with a
-      small k (default 0.1), because add-1 over a 43k-word vocabulary
-      would assign far too much probability mass to combinations that
-      never occurred.
-
-Unknown word handling:
-    - Any training word that occurs only once (a "singleton") is treated
-      as <UNK> when building emission counts. This lets the model learn
-      a realistic emission distribution for <UNK>, which is reused for
-      any genuinely unseen word encountered at dev/test time.
-    - At inference time, if a word is not found in the vocabulary, the
-      model tries its lowercase form before falling back to <UNK>. This
-      handles sentence-initial capitalization (e.g. "Was" -> "was").
-
-Log-space probabilities:
-    - Multiplying many raw probabilities together (one per token in a
-      sentence) causes numerical underflow: the running product becomes
-      so small that floating point rounds it to exactly 0.0, which makes
-      it impossible to compare different tag sequences. This is fatal for
-      Viterbi, which must compare thousands of candidate sequences.
-    - The fix is to work in log-space: log(a * b * c) = log(a) + log(b) +
-      log(c). Summing logs never underflows the way multiplying raw
-      probabilities does, so log_initial_prob / log_transition_prob /
-      log_emission_prob are the versions Viterbi will actually use.
-"""
-
 import math
 from collections import defaultdict, Counter
 
 from data_loader import load_conll
 
 UNK_TOKEN = "<UNK>"
+
+
+def get_unk_class(word):
+    """Map unseen words to feature-based unknown classes."""
+    if word[0].isupper():                return "<UNK-CAP>"
+    elif word.endswith("ing"):           return "<UNK-ING>"
+    elif word.endswith("ed"):            return "<UNK-ED>"
+    elif word.endswith("ly"):            return "<UNK-LY>"
+    elif word.endswith("er"):            return "<UNK-ER>"
+    elif word.endswith("est"):           return "<UNK-EST>"
+    elif word.endswith("ion"):           return "<UNK-ION>"
+    elif word.endswith("ness"):          return "<UNK-NESS>"
+    elif any(c.isdigit() for c in word): return "<UNK-NUM>"
+    elif "-" in word:                    return "<UNK-HYPH>"
+    else:                                return UNK_TOKEN
 
 
 class HMMTagger:
@@ -64,27 +41,19 @@ class HMMTagger:
         self.vocab_size = 0
 
     def fit(self, sentences):
-        """
-        Train the HMM by counting from the data.
-
-        Args:
-            sentences: list of (words, tags) tuples, as returned by
-                       data_loader.load_conll()
-        """
-        # Step 1: find singleton words (occur exactly `rare_threshold` times
-        # or fewer) across the WHOLE training set, before counting anything
+        """Train the HMM by collecting initial, transition, and emission counts."""
         word_freq = Counter()
         for words, _ in sentences:
             word_freq.update(words)
         self.rare_words = {w for w, c in word_freq.items() if c <= self.rare_threshold}
 
-        # Step 2: accumulate counts, replacing rare words with <UNK>
+        # Rare words are replaced with UNK classes so unseen words get useful probabilities.
         for words, tags in sentences:
             self.sentence_count += 1
             prev_tag = None
 
             for i, (word, tag) in enumerate(zip(words, tags)):
-                observed_word = UNK_TOKEN if word in self.rare_words else word
+                observed_word = get_unk_class(word) if word in self.rare_words else word
 
                 self.tags.add(tag)
                 self.vocab.add(observed_word)
@@ -97,75 +66,44 @@ class HMMTagger:
                     self.transition_counts[prev_tag][tag] += 1
                 prev_tag = tag
 
+        # Plain <UNK> is the fallback when no surface feature matches.
         self.vocab.add(UNK_TOKEN)
         self.num_tags = len(self.tags)
         self.vocab_size = len(self.vocab)
 
-    # ------------------------------------------------------------------
-    # Raw probabilities (useful for teaching / explaining the math,
-    # but NOT safe to use directly inside Viterbi -- see log_* versions)
-    # ------------------------------------------------------------------
-
     def initial_prob(self, tag):
-        """pi(tag): Laplace-smoothed probability that `tag` starts a sentence."""
         return (self.initial_counts[tag] + 1) / (self.sentence_count + self.num_tags)
 
     def transition_prob(self, prev_tag, tag):
-        """A(tag | prev_tag): add-k smoothed transition probability."""
         prev_total = sum(self.transition_counts[prev_tag].values())
         return (self.transition_counts[prev_tag][tag] + self.k_transition) / \
                (prev_total + self.k_transition * self.num_tags)
 
     def emission_prob(self, tag, word):
-        """
-        B(word | tag): add-k smoothed emission probability.
-
-        Lookup order for unseen / rare words:
-            1. original word form  (e.g. "Was")
-            2. lowercase form      (e.g. "was")  -- handles sentence-initial caps
-            3. <UNK> token         -- genuine unknown word
-        """
+        """Return the smoothed probability of a word given a tag."""
         if word in self.vocab:
             observed_word = word
         elif word.lower() in self.vocab:
             observed_word = word.lower()
         else:
-            observed_word = UNK_TOKEN
+            observed_word = get_unk_class(word)
 
         tag_total = self.tag_counts[tag]
         return (self.emission_counts[tag][observed_word] + self.k_emission) / \
                (tag_total + self.k_emission * self.vocab_size)
 
-    # ------------------------------------------------------------------
-    # Log-space probabilities -- USE THESE for Viterbi and for scoring
-    # full sentences. They avoid numerical underflow when many small
-    # probabilities are combined across a long sequence of tokens.
-    # ------------------------------------------------------------------
-
     def log_initial_prob(self, tag):
-        """log(pi(tag)). Numerically safe version of initial_prob()."""
         return math.log(self.initial_prob(tag))
 
     def log_transition_prob(self, prev_tag, tag):
-        """log(A(tag | prev_tag)). Numerically safe version of transition_prob()."""
         return math.log(self.transition_prob(prev_tag, tag))
 
     def log_emission_prob(self, tag, word):
-        """log(B(word | tag)). Numerically safe version of emission_prob()."""
         return math.log(self.emission_prob(tag, word))
 
 
 def explain_sentence(hmm, words, tags):
-    """
-    Walks through the HMM probability calculation step-by-step for ONE
-    specific sentence, using its known (gold) tags. This only SCORES the
-    given sequence -- it does not search for the best one. Viterbi (next
-    step) is what performs that search.
-
-    NOTE: this multiplies raw probabilities together, which is fine for a
-    short demonstration but will underflow to 0.0 on longer sentences.
-    See explain_sentence_log() below for the numerically safe version.
-    """
+    """Print the raw-probability score for one known tag sequence."""
     print(f"Sentence: {' '.join(words)}\n")
 
     score = hmm.initial_prob(tags[0])
@@ -186,13 +124,7 @@ def explain_sentence(hmm, words, tags):
 
 
 def explain_sentence_log(hmm, words, tags):
-    """
-    Same as explain_sentence(), but accumulates log-probabilities by
-    summing instead of multiplying raw probabilities. This is the
-    numerically safe version that Viterbi will actually use, since
-    log(a * b * c) = log(a) + log(b) + log(c) and summing logs does not
-    underflow the way multiplying many small raw probabilities does.
-    """
+    """Print the log-probability score for one known tag sequence."""
     print(f"Sentence: {' '.join(words)}\n")
 
     log_score = hmm.log_initial_prob(tags[0])
@@ -219,23 +151,24 @@ if __name__ == "__main__":
     hmm = HMMTagger()
     hmm.fit(train_sentences)
 
-    print(f"Number of tags: {hmm.num_tags}")
-    print(f"Vocabulary size (incl. <UNK>): {hmm.vocab_size}")
-    print(f"Number of singleton (rare) words mapped to <UNK>: {len(hmm.rare_words)}\n")
+    print(f"Number of tags:                          {hmm.num_tags}")
+    print(f"Vocabulary size (incl. UNK classes):     {hmm.vocab_size}")
+    print(f"Number of rare words mapped to UNK class:{len(hmm.rare_words)}\n")
 
     print("Sample initial probabilities:")
     for tag in ["DET-DT", "NOUN-NNP", "VERB-VBD", "ADP-IN"]:
         print(f"  pi({tag}) = {hmm.initial_prob(tag):.6f}")
 
     print("\nSample transition probabilities:")
-    print(f"  A(NOUN-NN | DET-DT)  = {hmm.transition_prob('DET-DT', 'NOUN-NN'):.6f}")
+    print(f"  A(NOUN-NN | DET-DT)    = {hmm.transition_prob('DET-DT', 'NOUN-NN'):.6f}")
     print(f"  A(VERB-VBD | NOUN-NNP) = {hmm.transition_prob('NOUN-NNP', 'VERB-VBD'):.6f}")
 
     print("\nSample emission probabilities:")
-    print(f"  B('the'  | DET-DT)   = {hmm.emission_prob('DET-DT', 'the'):.6f}")
-    print(f"  B('dog'  | NOUN-NN)  = {hmm.emission_prob('NOUN-NN', 'dog'):.6f}")
-    print(f"  B('xyzabc' | NOUN-NN) = {hmm.emission_prob('NOUN-NN', 'xyzabc'):.6f}  (unseen word -> <UNK>)")
-    print(f"  B('Was'  | VERB-VBD) = {hmm.emission_prob('VERB-VBD', 'Was'):.6f}  (capitalized -> tries lowercase)")
+    print(f"  B('the'          | DET-DT)  = {hmm.emission_prob('DET-DT', 'the'):.6f}")
+    print(f"  B('dog'          | NOUN-NN) = {hmm.emission_prob('NOUN-NN', 'dog'):.6f}")
+    print(f"  B('Was'          | VERB-VBD)= {hmm.emission_prob('VERB-VBD', 'Was'):.6f}  (caps -> lowercase)")
+    print(f"  B('policy-making'| VERB-VBG)= {hmm.emission_prob('VERB-VBG', 'policy-making'):.6f}  (unknown -> <UNK-HYPH>)")
+    print(f"  B('quickly'      | ADV-RB)  = {hmm.emission_prob('ADV-RB', 'quicklyxyz'):.6f}  (unknown -> <UNK-LY>)")
 
     print("\n" + "=" * 60)
     print("APPLYING THE HMM TO A REAL SENTENCE (raw probabilities)")

@@ -1,46 +1,8 @@
-"""
-data_loader.py
-
-Reads the Penn Treebank dataset in CoNLL column format (as specified in the
-ENCS5342 project description) and converts it into a list of (words, tags)
-pairs ready for use by the HMM baseline and the BiLSTM model.
-
-CoNLL column reference (per the project spec):
-    1  Word ID                - integer index, starts at 1 per sentence
-    2  Word Form               - surface form of the token
-    3  Lemma                   - NOT USED in this project
-    4  Coarse-grained POS      - Universal POS tag (NOUN, VERB, DET, ADP, ...)
-    5  Fine-grained POS        - Penn Treebank POS tag (NN, VBD, DT, IN, ...)
-    6  Features                - NOT USED in this project
-    7  Head ID                 - NOT USED in this project
-    8  Dependency Relation     - NOT USED in this project
-    9-10 Projective fields     - NOT USED in this project
-
-Target label: the project requires predicting a JOINT tag that merges the
-coarse- and fine-grained POS tags, e.g. NOUN-NNP, VERB-VBD, PRON-PRP, ADP-IN.
-This loader builds that joint tag as "{coarse_pos}-{fine_pos}".
-
-Sentences in the file are separated by a single blank line.
-"""
-
 from pathlib import Path
 
 
 def load_conll(filepath):
-    """
-    Parse a CoNLL-format file into a list of (words, tags) tuples.
-
-    Each sentence becomes one tuple:
-        words: list[str]  - the surface form of every token in the sentence
-        tags:  list[str]  - the joint POS tag "{CPOS}-{FPOS}" for every token
-
-    Args:
-        filepath (str or Path): path to a .conll file
-            (e.g. "data/en-universal-train.conll")
-
-    Returns:
-        list[tuple[list[str], list[str]]]: one (words, tags) pair per sentence
-    """
+    """Parse a CoNLL file into (words, joint_tags) sentence tuples."""
     filepath = Path(filepath)
     if not filepath.exists():
         raise FileNotFoundError(f"Could not find data file: {filepath}")
@@ -53,7 +15,7 @@ def load_conll(filepath):
         for line_num, raw_line in enumerate(f, start=1):
             line = raw_line.strip()
 
-            # Blank line marks the end of a sentence
+            # A blank line separates sentences in CoNLL files.
             if line == "":
                 if words:
                     sentences.append((words, tags))
@@ -63,8 +25,7 @@ def load_conll(filepath):
 
             cols = line.split("\t")
 
-            # Defensive check: a valid CoNLL line must have at least the
-            # 5 columns we need (ID, Form, Lemma, CPOS, FPOS)
+            # The project needs word form, coarse POS, and fine POS columns.
             if len(cols) < 5:
                 raise ValueError(
                     f"Malformed line {line_num} in {filepath.name}: "
@@ -80,7 +41,7 @@ def load_conll(filepath):
             words.append(word_form)
             tags.append(joint_tag)
 
-        # Handle the case where the file does not end with a blank line
+        # Keep the last sentence when the file has no trailing blank line.
         if words:
             sentences.append((words, tags))
 
@@ -88,18 +49,7 @@ def load_conll(filepath):
 
 
 def get_vocab_and_tag_sets(sentences):
-    """
-    Collect the set of unique words and unique joint tags appearing in a
-    list of (words, tags) sentence tuples. Useful for building word2idx /
-    tag2idx mappings and for sanity-checking the tag set against the
-    project's example tags (NOUN-NNP, VERB-VBD, PRON-PRP, ADP-IN, etc.).
-
-    Args:
-        sentences: output of load_conll()
-
-    Returns:
-        (set[str], set[str]): (unique_words, unique_tags)
-    """
+    """Collect unique words and joint POS tags from loaded sentences."""
     unique_words = set()
     unique_tags = set()
     for words, tags in sentences:
