@@ -16,39 +16,61 @@
 
 ---
 
+## GitHub Repository
+https://github.com/ayshahasan2004/Part-of-Speech-POS-Tagging
+
+---
+
 ## Project Description
 
 This project implements and evaluates Part-of-Speech (POS) taggers for English using the Penn Treebank corpus. POS tagging is the task of assigning a grammatical category (e.g., NOUN, VERB, ADJ) to each word in a sentence based on both its definition and its context.
 
 The target label is a **joint coarse+fine-grained tag** (e.g., `NOUN-NNP`, `VERB-VBD`, `PRON-PRP`), combining the Universal POS tag (column 4) and the Penn Treebank POS tag (column 5) from the CoNLL-format dataset.
 
-We implement and compare **at least two distinct approaches**, ranging from a simple baseline to a neural model, and report full evaluation metrics on both training and development sets.
+We implement and compare **two distinct approaches** and report full evaluation metrics on both training and development sets.
 
 ---
 
 ## Repository Structure
-
-```
-.
 ├── README.md
-├── notebooks/
-│   └── ENCS5342_Project_Track1_1220352_1222776.ipynb   # Main Jupyter Notebook
-├── src/
-│   └── ...                                              # Helper scripts / utilities
-├── data/
-│   └── README.txt                                       # Instructions to download dataset
-└── requirements.txt                                     # Python dependencies
-```
 
-> **Note:** Raw dataset files are not included in this repository. See `data/README.txt` for download instructions.
+├── notebooks/
+
+│   └── ENCS5342_Project_Track1_1220352_1222776.ipynb
+
+├── src/
+
+│   ├── data_loader.py
+
+│   ├── vocab.py
+
+│   ├── hmm_baseline.py
+
+│   ├── viterbi.py
+
+│   ├── evaluation.py
+
+│   ├── bilstm_model.py
+
+│   ├── train_bilstm.py
+
+│   └── train_utils.py
+
+├── data/
+
+│   ├── en-universal-train.conll
+
+│   └── en-universal-dev.conll
+
+└── requirements.txt
 
 ---
 
 ## Dataset
 
 - **Corpus:** English Penn Treebank (Stanford-style dependency format, CoNLL columns)
-- **Training set:** `en-universal-train.conll` (~37,840 sentences)
-- **Validation set:** `en-universal-dev.conll` (~1,992 sentences)
+- **Training set:** `en-universal-train.conll` (37,840 sentences)
+- **Validation set:** `en-universal-dev.conll` (1,992 sentences)
 - **Test set:** Held out by the instructor — not available to students
 
 Dataset access: provided by the course instructor via Google Drive.
@@ -57,10 +79,8 @@ Dataset access: provided by the course instructor via Google Drive.
 
 ## Models & Approaches
 
-*(To be updated as work progresses)*
-
-- [ ] Baseline model (e.g., rule-based / logistic regression)
-- [ ] Neural model (e.g., BiLSTM / Transformer encoder)
+- [x] **HMM Baseline** with Viterbi decoding — Dev Accuracy: **95.51%**
+- [x] **BiLSTM Neural Tagger** — Dev Accuracy: **95.12%**
 
 ---
 
@@ -80,13 +100,12 @@ For every model and every data split we report:
 ### Requirements
 
 - Python 3.9+
-- PyTorch
-- See `requirements.txt` for full dependency list with versions
+- PyTorch 2.0+
 
 ### Install dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install torch numpy pandas scikit-learn matplotlib
 ```
 
 ### Run the notebook
@@ -95,24 +114,15 @@ pip install -r requirements.txt
 jupyter notebook notebooks/ENCS5342_Project_Track1_1220352_1222776.ipynb
 ```
 
-Make sure all outputs are cleared before re-running from scratch to ensure full reproducibility. Random seeds are set explicitly throughout the notebook.
+Make sure to run all cells in order. Random seeds are set explicitly throughout the notebook for reproducibility.
 
 ---
 
-## Key Dates
+## Key Results
 
-| Milestone | Date |
-|-----------|------|
-| Team & track registration | 9 June 2026 |
-| Final notebook submission | 25 June 2026 (11:59 PM) |
-| In-person discussion meetings | 27 June – 12 July 2026 |
-
----
-
-## Submission
-
-Final submission ZIP: `ENCS5342_Project_1_1220352_1222776.zip`  
-Submitted via Moodle/ITC by **25 June 2026, 11:59 PM**.
+| Model | Train Accuracy | Dev Accuracy | Dev Micro F1 | Dev Macro F1 |
+|-------|---------------|--------------|--------------|--------------|
+| HMM Baseline | 95.99% | 95.51% | 0.9551 | 0.8769 |
+| BiLSTM | 98.50% | 95.12% | 0.9512 | 0.8682 |
 
 ---
-
