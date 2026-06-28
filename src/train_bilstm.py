@@ -20,6 +20,7 @@ def train_model(model, train_loader, train_eval_loader, dev_loader, epochs, lr, 
 
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.5)
     
     # parameters for step 6 early stopping
     best_val_accuracy = 0.0
@@ -76,6 +77,7 @@ def train_model(model, train_loader, train_eval_loader, dev_loader, epochs, lr, 
         val_accuracy = (correct_tokens / total_tokens) * 100 if total_tokens > 0 else 0    #calculate validation accuracy as a percentage
         
         print(f"Epoch [{epoch+1}/{epochs}] -> Train Loss: {avg_train_loss:.4f} | Val Accuracy: {val_accuracy:.2f}%") #training loss and validation accuracy for the current epoch
+        scheduler.step()
 
         # step 6: early stopping logic implementation based on development set performance
         if val_accuracy > best_val_accuracy:
@@ -86,6 +88,7 @@ def train_model(model, train_loader, train_eval_loader, dev_loader, epochs, lr, 
             
         if patience_counter >= patience:
             print(f"\n[Early Stopping] triggered at epoch {epoch+1}. validation accuracy did not improve for {patience} consecutive epochs.")
+
             break
 
     # step 7 & 8: running advanced unified evaluation reports if full datasets are active
